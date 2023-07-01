@@ -1,0 +1,6 @@
+# github.com/alecthomas/participle/v2 v2.0.0
+## explicit; go 1.18
+github.com/alecthomas/participle/v2
+github.com/alecthomas/participle/v2/lexer
+# golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
+## explicit; go 1.20
