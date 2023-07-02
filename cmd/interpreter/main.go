@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/ozansz/semantix/internal/parser"
@@ -18,9 +19,10 @@ func main() {
 		return
 	}
 	parser := parser.New()
-	expr, err := parser.ParseFile(*sxQLFile)
+	fmt.Printf("EBNF:\n%s", parser.Ebnf())
+	file, err := parser.ParseFile(*sxQLFile)
 	if err != nil {
 		log.Fatalf("Error parsing file: %v", err)
 	}
-	log.Printf("Parsed expression:\n\n%s", expr.Pretty())
+	log.Printf("Parsed expressions:\n\n%s", file.Pretty())
 }
