@@ -14,9 +14,8 @@ type File struct {
 }
 
 type Expression struct {
-	Fact        *Fact        `  @@`
-	SimpleQuery *SimpleQuery `| @@`
-	// Queries     []*Query
+	Fact  *Fact  `  @@`
+	Query *Query `| @@`
 }
 
 type Fact struct {
@@ -26,14 +25,26 @@ type Fact struct {
 	Anchor    string `[ "as" @AnchorIdent ]`
 }
 
-type SimpleQuery struct {
+type QueryKind int
+
+const (
+	QueryKindSimple QueryKind = iota
+	QueryKindCompound
+	QueryKindLinked
+	QueryKindLinkedCompound
+)
+
+type Query struct {
 	Subject      *string `( @Ident`
 	SubjectVar   *string `| @QueryIdent )`
 	Predicate    *string `( @Ident`
 	PredicateVar *string `| @QueryIdent )`
 	Object       Object  `( @@`
-	ObjectVar    *string `| @QueryIdent )`
+	ObjectVar    *string `| @QueryIdent`
+	ObjectQuery  *Query  `| "(" @@ ")" )`
+	LinkedQuery  *Query  `[ "-" ">" @@ ]`
 	IDInFile     string
+	Kind         QueryKind
 }
 
 type Object interface {
@@ -105,21 +116,21 @@ func (e *Expression) Pretty() string {
 		sb.WriteString(", ")
 		sb.WriteString(e.Fact.Object.String())
 		sb.WriteRune(')')
-	} else if e.SimpleQuery != nil {
-		sb.WriteString(e.SimpleQuery.IDInFile)
+	} else if e.Query != nil {
+		sb.WriteString(e.Query.IDInFile)
 		sb.WriteString(": ")
-		if (len(e.SimpleQuery.IDInFile) + 2) > prettyExprIndent {
+		if (len(e.Query.IDInFile) + 2) > prettyExprIndent {
 			sb.WriteString("\n")
 			sb.WriteString(anchorSpace)
 		} else {
-			sb.WriteString(anchorSpace[:prettyExprIndent-len(e.SimpleQuery.IDInFile)-2])
+			sb.WriteString(anchorSpace[:prettyExprIndent-len(e.Query.IDInFile)-2])
 		}
-		sb.WriteString(e.SimpleQuery.Pretty())
+		sb.WriteString(e.Query.Pretty())
 	}
 	return sb.String()
 }
 
-func (s *SimpleQuery) Pretty() string {
+func (s *Query) Pretty() string {
 	var sb strings.Builder
 	sb.WriteRune('(')
 
@@ -139,8 +150,36 @@ func (s *SimpleQuery) Pretty() string {
 		sb.WriteString(s.Object.String())
 	} else if s.ObjectVar != nil {
 		sb.WriteString(*s.ObjectVar)
+	} else if s.ObjectQuery != nil {
+		sb.WriteString(s.ObjectQuery.Pretty())
 	}
 
 	sb.WriteRune(')')
+
+	if s.LinkedQuery != nil {
+		sb.WriteString(" -> ")
+		sb.WriteString(s.LinkedQuery.Pretty())
+	}
+
 	return sb.String()
+}
+
+func (q *Query) IsLinkedCompound() bool {
+	if q.LinkedQuery == nil {
+		return false
+	}
+	if q.ObjectQuery != nil {
+		return true
+	}
+	currQ := q
+	for {
+		if currQ == nil {
+			break
+		}
+		if currQ.ObjectQuery != nil {
+			return true
+		}
+		currQ = currQ.LinkedQuery
+	}
+	return false
 }

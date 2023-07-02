@@ -3,7 +3,6 @@ package parser
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
@@ -18,7 +17,7 @@ var (
 		{Name: `String`, Pattern: `"(?:\\.|[^"])*"`},
 		{Name: `Number`, Pattern: `[-+]?\d*\.?\d+([eE][-+]?\d+)?`},
 		{Name: `Punct`, Pattern: `[-[!@#$%^&*()+_={}\|:;"'<,>.?/]|]`},
-		{Name: `Whitespace`, Pattern: `\s+`},
+		{Name: `Whitespace`, Pattern: `[ \t\n\r]+`},
 	})
 )
 
@@ -51,10 +50,9 @@ func (p *Parser) ParseLine(input string) (*Expression, error) {
 	if err != nil {
 		return nil, err
 	}
-	// if err := p.separateQueries(exp); err != nil {
-	// 	return nil, err
-	// }
-	return exp, nil
+	exprs := []*Expression{exp}
+	p.postProcessQueries(exprs)
+	return exprs[0], nil
 }
 
 func (p *Parser) ParseFile(path string) (*File, error) {
@@ -67,46 +65,35 @@ func (p *Parser) ParseFile(path string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	// if err := p.separateQueries(exp); err != nil {
-	// 	return nil, err
-	// }
-	i := 1
-	for _, e := range file.Expressions {
-		if e.SimpleQuery != nil {
-			e.SimpleQuery.IDInFile = fmt.Sprintf("Q%d", i)
-			i++
-		}
-	}
+	p.postProcessQueries(file.Expressions)
 	return file, nil
 }
 
 func (p *Parser) Ebnf() string {
-	var sb strings.Builder
-	sb.WriteString("Expression:\n")
-	sb.WriteString(p.expParser.String())
-	sb.WriteString("\n\nFile:\n")
-	sb.WriteString(p.fileParser.String())
-	return sb.String()
+	return p.fileParser.String()
 }
 
-// func (p *Parser) separateQueries(exp *Expression) error {
-// 	queryIndices := []int{}
-// 	exp.Queries = []*Query{}
-// 	for i, fact := range exp.Facts {
-// 		if strings.HasPrefix(fact.Subject, "?") || strings.HasPrefix(fact.Subject, "!") ||
-// 			strings.HasPrefix(fact.Predicate, "?") || strings.HasPrefix(fact.Predicate, "!") ||
-// 			fact.Object.IsSubject() && (strings.HasPrefix(fact.Object.String(), "?") || strings.HasPrefix(fact.Object.String(), "!")) {
-// 			queryIndices = append(queryIndices, i)
-
-// 			q, err := fact.ToQuery()
-// 			if err != nil {
-// 				return err
-// 			}
-// 			exp.Queries = append(exp.Queries, q)
-// 		}
-// 	}
-// 	for i := len(queryIndices) - 1; i >= 0; i-- {
-// 		exp.Facts = append(exp.Facts[:queryIndices[i]], exp.Facts[queryIndices[i]+1:]...)
-// 	}
-// 	return nil
-// }
+func (p *Parser) postProcessQueries(exprs []*Expression) {
+	basicIndx, compoundIndx, linkedIndx, linkedCompIndx := 1, 1, 1, 1
+	for _, e := range exprs {
+		if e.Query != nil {
+			if e.Query.IsLinkedCompound() {
+				e.Query.IDInFile = fmt.Sprintf("LCQ%d", linkedCompIndx)
+				e.Query.Kind = QueryKindLinkedCompound
+				linkedCompIndx++
+			} else if e.Query.ObjectQuery != nil {
+				e.Query.IDInFile = fmt.Sprintf("CQ%d", compoundIndx)
+				e.Query.Kind = QueryKindCompound
+				compoundIndx++
+			} else if e.Query.LinkedQuery != nil {
+				e.Query.IDInFile = fmt.Sprintf("LQ%d", linkedIndx)
+				e.Query.Kind = QueryKindLinked
+				linkedIndx++
+			} else {
+				e.Query.IDInFile = fmt.Sprintf("Q%d", basicIndx)
+				e.Query.Kind = QueryKindSimple
+				basicIndx++
+			}
+		}
+	}
+}

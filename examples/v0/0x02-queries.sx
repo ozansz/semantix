@@ -11,7 +11,7 @@ Ozan name "Ozan Sazak!!!"
 # Who is a person?
 ?x is Person
 
-# ?x is Person, ?y is Person, ?x knows (?y knows CS) # Who knows someone who knows CS? Return all variables.
+?x knows (?y knows CS) --Who knows that someone knows CS? Return all variables.
 
 Ozan is ?x # Ozan is a what?
 
@@ -19,8 +19,8 @@ Ozan is ?x # Ozan is a what?
 
 ?x ?y ?z # Who is what?
 
-#### ?x ?y ?z ?a ?b !c # Who is what?
+?x knows !y -> !y subtopicOf Science # Who knows a subtopic of science?
 
-# ?x knows !y, !y subtopicOf Science # Who knows a subtopic of science?
+?x knows (!y knows CS) # Who knows that someone knows CS? Return only x.
 
-# ?x is Person, !y is Person, ?x knows (!y knows CS) # Who knows someone who knows CS? Return only x.
+!x is Person -> ?y is Person -> ?y knows (!x knows CS)
