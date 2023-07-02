@@ -50,7 +50,9 @@ type Query struct {
 type Object interface {
 	String() string
 	IsSubject() bool
+	IsNumber() bool
 	Copy() Object
+	InnerValue() any
 }
 
 type SubjectObject struct {
@@ -79,10 +81,20 @@ func (s StringObject) IsSubject() bool         { return false }
 func (n NumberObject) IsSubject() bool         { return false }
 func (r RelationAnchorObject) IsSubject() bool { return false }
 
+func (s SubjectObject) IsNumber() bool        { return false }
+func (s StringObject) IsNumber() bool         { return false }
+func (n NumberObject) IsNumber() bool         { return true }
+func (r RelationAnchorObject) IsNumber() bool { return false }
+
 func (s SubjectObject) Copy() Object        { return SubjectObject{Value: s.Value} }
 func (s StringObject) Copy() Object         { return StringObject{Value: s.Value} }
 func (n NumberObject) Copy() Object         { return NumberObject{Value: n.Value} }
 func (r RelationAnchorObject) Copy() Object { return RelationAnchorObject{ID: r.ID} }
+
+func (s SubjectObject) InnerValue() any        { return s.Value }
+func (s StringObject) InnerValue() any         { return s.Value }
+func (n NumberObject) InnerValue() any         { return n.Value }
+func (r RelationAnchorObject) InnerValue() any { return r.ID }
 
 func (f *File) Pretty() string {
 	var sb strings.Builder

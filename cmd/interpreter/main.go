@@ -4,8 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/ozansz/semantix/internal/interpreter"
 	"github.com/ozansz/semantix/internal/parser"
+	"github.com/ozansz/semantix/pkg/filestore"
 )
 
 var (
@@ -14,15 +19,30 @@ var (
 
 func main() {
 	flag.Parse()
-	if *sxQLFile == "" {
-		flag.Usage()
-		return
-	}
 	parser := parser.New()
-	fmt.Printf("EBNF:\n%s", parser.Ebnf())
-	file, err := parser.ParseFile(*sxQLFile)
+
+	store, err := filestore.New(filestore.WithPersistentFile("store.db"), filestore.WithDebug())
 	if err != nil {
-		log.Fatalf("Error parsing file: %v", err)
+		log.Fatalf("Error creating store: %v", err)
 	}
-	log.Printf("Parsed expressions:\n\n%s", file.Pretty())
+	interpreter := interpreter.New(parser, store)
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		fmt.Printf("Received SIGTERM, exiting...")
+		interpreter.Quit()
+		store.Close()
+		os.Exit(1)
+	}()
+
+	if *sxQLFile != "" {
+		file, err := parser.ParseFile(*sxQLFile)
+		if err != nil {
+			log.Fatalf("Error parsing file: %v", err)
+		}
+		interpreter.ExecuteBatch(file.Expressions)
+	}
+	interpreter.ExecuteREPL()
 }
