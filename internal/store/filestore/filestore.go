@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ozansz/semantix/internal/parser"
 	"github.com/ozansz/semantix/internal/store"
 
 	"github.com/zhenjl/cityhash"
@@ -25,7 +26,6 @@ type FileStore struct {
 	store         sync.Map
 	idBuffer      sync.Map
 	storeSyncDone chan struct{}
-	// subjectIndex
 }
 
 type FileStoreOption func(*FileStore)
@@ -93,7 +93,7 @@ func (fs *FileStore) flush() {
 				errs = append(errs, fmt.Errorf("triple with id %d not found in store", id))
 				return true
 			}
-			enc := tripleEncode(id, t.(*store.Triple))
+			enc := tripleEncode(id, t.(*parser.Fact))
 			if _, err := fs.fp.Write(enc); err != nil {
 				errs = append(errs, err)
 			}
@@ -128,41 +128,65 @@ func (fs *FileStore) Close() error {
 	return nil
 }
 
-func (fs *FileStore) Add(t *store.Triple) error {
+func (fs *FileStore) Add(t *parser.Fact) error {
 	h := tripleHash(t)
 	fs.store.Store(h, t.Copy())
 	fs.idBuffer.Store(h, true)
 	return nil
 }
 
-func (fs *FileStore) Get(q *store.Query) (map[uint32]*store.Triple, error) {
-	trs := map[uint32]*store.Triple{}
+func (fs *FileStore) Get(q *store.Query) (map[uint32]*parser.Fact, error) {
+	trs := map[uint32]*parser.Fact{}
 
 	fs.store.Range(func(key, value any) bool {
-		t := value.(*store.Triple)
-		if (q.SubjectFilter != nil && t.Subject != *q.SubjectFilter) ||
-			(q.PredicateFilter != nil && t.Predicate != *q.PredicateFilter) ||
-			(q.ObjectFilterString != nil && t.Object.Kind != store.ObjectKindFloat && *t.Object.StringValue != *q.ObjectFilterString) ||
-			// (q.ObjectFilterInteger != nil && t.Object.Kind == store.ObjectKindInteger && *t.Object.IntegerValue != *q.ObjectFilterInteger) ||
-			(q.ObjectFilterFloat != nil && t.Object.Kind == store.ObjectKindFloat && *t.Object.FloatValue != *q.ObjectFilterFloat) {
-			// (q.ObjectFilterBool != nil && t.Object.Kind == store.ObjectKindBool && *t.Object.BoolValue != *q.ObjectFilterBool) {
-			return true
+		t := value.(*parser.Fact)
+		if q.Matches(t) {
+			trs[key.(uint32)] = t.Copy()
 		}
-		trs[key.(uint32)] = t.Copy()
 		return true
 	})
 
 	return trs, nil
 }
 
-func tripleHash(t *store.Triple) uint32 {
-	s := fmt.Sprintf("s:%q|p:%q|o:%d:%q", t.Subject, t.Predicate, t.Object.Kind, t.Object.String())
+func (fs *FileStore) Sync() error {
+	fs.flush()
+	return nil
+}
+
+func tripleHash(t *parser.Fact) uint32 {
+	var s string
+	if t.Subject != nil {
+		if t.Object != nil {
+			s = fmt.Sprintf("s:%q|p:%q|o:%d:%q", *t.Subject, t.Predicate, t.Object.Kind(), t.Object.String())
+		} else {
+			s = fmt.Sprintf("s:%q|p:%q|o:(%s)", *t.Subject, t.Predicate, t.ObjectFact.Pretty())
+		}
+	} else {
+		if t.Object != nil {
+			s = fmt.Sprintf("s:(%s)|p:%q|o:%d:%q", t.SubjectFact.Pretty(), t.Predicate, t.Object.Kind(), t.Object.String())
+		} else {
+			s = fmt.Sprintf("s:(%s)|p:%q|o:(%s)", t.SubjectFact.Pretty(), t.Predicate, t.ObjectFact.Pretty())
+		}
+	}
 	b := []byte(s)
 	return cityhash.CityHash32(b, uint32(len(b)))
 }
 
-func tripleEncode(id uint32, t *store.Triple) []byte {
-	s := fmt.Sprintf("(%d, %s, %s, %d, %s)", id, t.Subject,
-		t.Predicate, t.Object.Kind, t.Object.String())
+func tripleEncode(id uint32, t *parser.Fact) []byte {
+	var s string
+	if t.Subject != nil {
+		if t.Object != nil {
+			s = fmt.Sprintf("(%d, %s, %s, %d, %s)", id, *t.Subject, t.Predicate, t.Object.Kind(), t.Object.String())
+		} else {
+			s = fmt.Sprintf("(%d, %s, %s, (%s))", id, *t.Subject, t.Predicate, t.ObjectFact.Pretty())
+		}
+	} else {
+		if t.Object != nil {
+			s = fmt.Sprintf("(%d, (%s), %s, %d, %s)", id, t.SubjectFact.Pretty(), t.Predicate, t.Object.Kind(), t.Object.String())
+		} else {
+			s = fmt.Sprintf("(%d, (%s), %s, (%s))", id, t.SubjectFact.Pretty(), t.Predicate, t.ObjectFact.Pretty())
+		}
+	}
 	return []byte(s)
 }

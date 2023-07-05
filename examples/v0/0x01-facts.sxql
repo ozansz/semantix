@@ -1,0 +1,13 @@
+(Ozan, is, Person)
+(Ufuk, is, Person)
+(Ozan, knows, CS)
+(Ufuk, knows, CS)
+(Ufuk, length, 123.456)
+(Ozan, age, 24)
+(Ozan, name, "Ozan Sazak!!!")
+
+(Ufuk, knows, (Ozan, knows, CS))
+((Ozan, knows, CS), approvedBy, METU)
+
+(Ezgi, thinks, (Ozan, is, Person))
+(Ezgi, notKnows, (Ufuk, knows, (Ozan, knows, CS)))

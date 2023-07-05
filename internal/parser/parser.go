@@ -13,7 +13,7 @@ var (
 		{Name: "Comment", Pattern: `(?:#|--)[^\n]*\n?`},
 		{Name: `QueryIdent`, Pattern: `[?!][a-zA-Z][a-zA-Z_\d]*`},
 		{Name: `Ident`, Pattern: `[a-zA-Z][a-zA-Z_\d]*`},
-		{Name: `AnchorIdent`, Pattern: `_[a-zA-Z_\d]+`},
+		// {Name: `AnchorIdent`, Pattern: `_[a-zA-Z_\d]+`},
 		{Name: `String`, Pattern: `"(?:\\.|[^"])*"`},
 		{Name: `Number`, Pattern: `[-+]?\d*\.?\d+([eE][-+]?\d+)?`},
 		{Name: `Punct`, Pattern: `[-[!@#$%^&*()+_={}\|:;"'<,>.?/]|]`},
@@ -31,16 +31,16 @@ func New() *Parser {
 		expParser: participle.MustBuild[Expression](
 			participle.Lexer(sxQLLexer),
 			participle.Unquote("String"),
-			participle.Union[Object](SubjectObject{}, StringObject{}, NumberObject{}, RelationAnchorObject{}),
+			participle.Union[Object](SubjectObject{}, StringObject{}, NumberObject{}), //, RelationAnchorObject{}),
 			participle.Elide("Comment", "Whitespace"),
-			participle.UseLookahead(2),
+			participle.UseLookahead(5),
 		),
 		fileParser: participle.MustBuild[File](
 			participle.Lexer(sxQLLexer),
 			participle.Unquote("String"),
-			participle.Union[Object](SubjectObject{}, StringObject{}, NumberObject{}, RelationAnchorObject{}),
+			participle.Union[Object](SubjectObject{}, StringObject{}, NumberObject{}), //, RelationAnchorObject{}),
 			participle.Elide("Comment", "Whitespace"),
-			participle.UseLookahead(2),
+			participle.UseLookahead(5),
 		),
 	}
 }

@@ -8,11 +8,26 @@ import (
 
 	"github.com/ozansz/semantix/internal/parser"
 	"github.com/ozansz/semantix/internal/store"
-	"github.com/ozansz/semantix/pkg/ptrutils"
 )
 
 const (
 	defaultPrompt = "sxQL> "
+)
+
+var (
+	commands = map[string]func(*Interpreter){
+		"quit": func(i *Interpreter) {
+			i.Quit()
+		},
+		"exit": func(i *Interpreter) {
+			i.Quit()
+		},
+		"fsync": func(i *Interpreter) {
+			if err := i.store.Sync(); err != nil {
+				fmt.Printf("!! Error syncing the store: %v\n", err)
+			}
+		},
+	}
 )
 
 type Interpreter struct {
@@ -20,16 +35,29 @@ type Interpreter struct {
 	prompt string
 	store  store.Store
 	quit   chan struct{}
+	debug  bool
+}
+
+type InterpreterOption func(*Interpreter)
+
+func WithDebug() func(*Interpreter) {
+	return func(i *Interpreter) {
+		i.debug = true
+	}
 }
 
 // New returns a new interpreter.
-func New(parser *parser.Parser, store store.Store) *Interpreter {
-	return &Interpreter{
+func New(parser *parser.Parser, store store.Store, opts ...InterpreterOption) *Interpreter {
+	i := &Interpreter{
 		parser: parser,
 		store:  store,
 		prompt: defaultPrompt,
 		quit:   make(chan struct{}),
 	}
+	for _, o := range opts {
+		o(i)
+	}
+	return i
 }
 
 func (i *Interpreter) Quit() {
@@ -75,6 +103,12 @@ func (i *Interpreter) ExecuteREPL() {
 			continue
 		}
 		line = strings.TrimSpace(line)
+
+		if handler, ok := commands[line]; ok {
+			handler(i)
+			continue
+		}
+
 		expr, err := i.parser.ParseLine(line)
 		if err != nil {
 			fmt.Printf("!!! Error parsing line: %v\n", err)
@@ -85,47 +119,24 @@ func (i *Interpreter) ExecuteREPL() {
 }
 
 func (i *Interpreter) executeFact(f *parser.Fact) error {
-	t := &store.Triple{
-		Subject:   f.Subject,
-		Predicate: f.Predicate,
-	}
-	switch f.Object.(type) {
-	case parser.SubjectObject:
-		t.Object.Kind = store.ObjectKindSubject
-		t.Object.StringValue = ptrutils.Ptr(f.Object.(parser.SubjectObject).Value)
-	case parser.StringObject:
-		t.Object.Kind = store.ObjectKindString
-		t.Object.StringValue = ptrutils.Ptr(f.Object.(parser.StringObject).Value)
-	case parser.RelationAnchorObject:
-		t.Object.Kind = store.ObjectKindAnchor
-		t.Object.StringValue = ptrutils.Ptr(f.Object.(parser.RelationAnchorObject).ID)
-	case parser.NumberObject:
-		t.Object.Kind = store.ObjectKindFloat
-		t.Object.FloatValue = ptrutils.Ptr(f.Object.(parser.NumberObject).Value)
-	}
-	return i.store.Add(t)
+	return i.store.Add(f)
 }
 
 func (i *Interpreter) executeQuery(q *parser.Query) error {
-	if q.ObjectQuery != nil {
-		return fmt.Errorf("compound queries are not supported yet")
-	}
-	if q.LinkedQuery != nil {
-		return fmt.Errorf("linked queries are not supported yet")
-	}
-
 	qq := store.QueryFromAST(q)
 
-	fmt.Printf("DEBUG: Query: %s\n", qq.Pretty())
+	if i.debug {
+		fmt.Printf("Executing query: %s\n", qq.Pretty())
+	}
 
-	triples, err := i.store.Get(qq)
+	results, err := i.store.Get(qq)
 	if err != nil {
-		return fmt.Errorf("failed to run query %+v: %v", qq, err)
+		return err
 	}
-
-	for id, t := range triples {
-		fmt.Printf("%010d: (%s, %s, %s)\n", id, t.Subject, t.Predicate, t.Object.String())
+	fmt.Println()
+	for id, result := range results {
+		fmt.Printf("%010d: %s\n", id, result.Pretty())
 	}
-
+	fmt.Println()
 	return nil
 }

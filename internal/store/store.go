@@ -3,75 +3,51 @@ package store
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/ozansz/semantix/internal/parser"
 	"github.com/ozansz/semantix/pkg/ptrutils"
 )
 
-type Triple struct {
-	Subject   string
-	Predicate string
-	Object    Object
-}
-
 type Object struct {
 	StringValue *string
-	// IntegerValue *int64
-	FloatValue *float64
-	Kind       ObjectKind
+	FloatValue  *float64
+	Kind        ObjectKind
 }
 
 type ObjectKind int
 
 const (
 	ObjectKindSubject ObjectKind = iota
-	ObjectKindAnchor
 	ObjectKindString
-	// ObjectKindInteger
 	ObjectKindFloat
 )
 
 type Query struct {
 	SubjectFilter      *string
+	SubjectFilterQuery *Query
 	PredicateFilter    *string
 	ObjectFilterString *string
-	// ObjectFilterInteger *int64
-	ObjectFilterFloat *float64
-
-	// TODO: Add support for these.
-	// ObjectAnchor    *Triple
+	ObjectFilterFloat  *float64
+	ObjectFilterQuery  *Query
+	LinkedQuery        *Query
 }
 
 type Store interface {
-	Add(*Triple) error
-	Get(*Query) (map[uint32]*Triple, error)
+	Add(*parser.Fact) error
+	Get(*Query) (map[uint32]*parser.Fact, error)
+
+	Sync() error
 
 	Close() error
-}
-
-func (t *Triple) Copy() *Triple {
-	return &Triple{
-		Subject:   t.Subject,
-		Predicate: t.Predicate,
-		Object: Object{
-			StringValue: ptrutils.PtrFromPtr(t.Object.StringValue),
-			// IntegerValue: ptrutils.PtrFromPtr(t.Object.IntegerValue),
-			FloatValue: ptrutils.PtrFromPtr(t.Object.FloatValue),
-			Kind:       t.Object.Kind,
-		},
-	}
 }
 
 func (o *Object) String() string {
 	switch o.Kind {
 	case ObjectKindSubject:
 		return *o.StringValue
-	case ObjectKindAnchor:
-		return *o.StringValue
 	case ObjectKindString:
 		return fmt.Sprintf("%q", *o.StringValue)
-	// case ObjectKindInteger:
-	// 	return fmt.Sprintf("%d", *o.IntegerValue)
 	case ObjectKindFloat:
 		return fmt.Sprintf("%f", *o.FloatValue)
 	}
@@ -84,6 +60,9 @@ func QueryFromAST(q *parser.Query) *Query {
 	if q.Subject != nil {
 		qq.SubjectFilter = ptrutils.PtrFromPtr(q.Subject)
 	}
+	if q.SubjectQuery != nil {
+		qq.SubjectFilterQuery = QueryFromAST(q.SubjectQuery)
+	}
 	if q.Predicate != nil {
 		qq.PredicateFilter = ptrutils.PtrFromPtr(q.Predicate)
 	}
@@ -94,22 +73,64 @@ func QueryFromAST(q *parser.Query) *Query {
 			qq.ObjectFilterString = ptrutils.Ptr(q.Object.InnerValue().(string))
 		}
 	}
+	if q.ObjectQuery != nil {
+		qq.ObjectFilterQuery = QueryFromAST(q.ObjectQuery)
+	}
 	return qq
 }
 
+func (q *Query) Matches(t *parser.Fact) bool {
+	if q.LinkedQuery != nil {
+		// TODO: Implement linked queries
+		log.Panicf("Linked queries are not supported yet")
+	}
+	if q.SubjectFilter != nil && ((t.Subject != nil && *t.Subject != *q.SubjectFilter) || (t.Subject == nil)) {
+		return false
+	}
+	if q.SubjectFilterQuery != nil && (t.SubjectFact != nil && !q.SubjectFilterQuery.Matches(t.SubjectFact) || t.SubjectFact == nil) {
+		return false
+	}
+	if q.PredicateFilter != nil && t.Predicate != *q.PredicateFilter {
+		return false
+	}
+	if q.ObjectFilterString != nil && (t.Object != nil && (!t.Object.IsNumber() && t.Object.InnerValue().(string) != *q.ObjectFilterString || t.Object.IsNumber()) || t.Object == nil) {
+		return false
+	}
+	if q.ObjectFilterFloat != nil && (t.Object != nil && (t.Object.IsNumber() && t.Object.InnerValue().(float64) != *q.ObjectFilterFloat || !t.Object.IsNumber()) || t.Object == nil) {
+		return false
+	}
+	if q.ObjectFilterQuery != nil && (t.ObjectFact != nil && !q.ObjectFilterQuery.Matches(t.ObjectFact) || t.ObjectFact == nil) {
+		return false
+	}
+	return true
+}
+
 func (q *Query) Pretty() string {
-	s, p, o := "?", "?", "?"
+	var sb strings.Builder
+	sb.WriteRune('(')
 	if q.SubjectFilter != nil {
-		s = *q.SubjectFilter
+		sb.WriteString(*q.SubjectFilter)
+	} else if q.SubjectFilterQuery != nil {
+		sb.WriteString(q.SubjectFilterQuery.Pretty())
+	} else {
+		sb.WriteString("*")
 	}
+	sb.WriteString(", ")
 	if q.PredicateFilter != nil {
-		p = *q.PredicateFilter
+		sb.WriteString(*q.PredicateFilter)
+	} else {
+		sb.WriteString("*")
 	}
-	if q.ObjectFilterFloat != nil {
-		o = fmt.Sprintf("%f", *q.ObjectFilterFloat)
-	}
+	sb.WriteString(", ")
 	if q.ObjectFilterString != nil {
-		o = fmt.Sprintf("%q", *q.ObjectFilterString)
+		sb.WriteString(*q.ObjectFilterString)
+	} else if q.ObjectFilterFloat != nil {
+		sb.WriteString(fmt.Sprintf("%f", *q.ObjectFilterFloat))
+	} else if q.ObjectFilterQuery != nil {
+		sb.WriteString(q.ObjectFilterQuery.Pretty())
+	} else {
+		sb.WriteString("*")
 	}
-	return fmt.Sprintf("<%s, %s, %s>", s, p, o)
+	sb.WriteRune(')')
+	return sb.String()
 }
