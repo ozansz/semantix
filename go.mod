@@ -7,3 +7,5 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/zhenjl/cityhash v0.0.0-20131128155616-cdd6a94144ab
 )
+
+require github.com/oklog/ulid/v2 v2.1.0
